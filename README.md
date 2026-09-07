@@ -8,27 +8,99 @@ VenVid is a Vencord plugin that intercepts oversized video uploads, offering an 
 - **Compression Settings**: Remove audio, set target resolutions, and let the integrated FFmpeg encoder optimize the bitrate to seamlessly fit into your current channel's exact upload limit.
 - **Batch Processing**: When uploading multiple oversized videos at once, the editor will step you through each one sequentially.
 
-## Installation Instructions
+## Installation
 
-VenVid must be built directly into your Vencord installation.
+### 1. Install FFmpeg & FFprobe
 
-1. **Clone this repository** into your Vencord `src/userplugins` folder (make sure the folder is named `venVid`):
-   ```bash
-   cd path/to/Vencord/src/userplugins
-   git clone https://github.com/CaiCheng-Li/venVid.git
+VenVid uses FFmpeg and FFprobe to compress and analyze video. Both must be installed and available in your system's `PATH`.
+
+<details>
+<summary><strong>Windows</strong></summary>
+
+**Option A — winget (recommended)**
+```powershell
+winget install Gyan.FFmpeg
+```
+This installs FFmpeg and FFprobe and adds them to your `PATH` automatically.
+
+**Option B — Manual install**
+1. Download the latest **ffmpeg-release-full** build from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) (the `ffmpeg-release-full.7z` archive).
+2. Extract the archive to a permanent location, e.g. `C:\ffmpeg`.
+3. Add the `bin` folder to your system `PATH`:
+   - Open **Start** → search **"Edit the system environment variables"** → click **Environment Variables**.
+   - Under **System variables**, select `Path` → **Edit** → **New** → enter `C:\ffmpeg\bin`.
+   - Click **OK** on all dialogs.
+4. Open a **new** terminal and verify:
+   ```powershell
+   ffmpeg -version
+   ffprobe -version
    ```
-2. **Rebuild Vencord** so that the native FFmpeg processing elements are bundled into Vencord's main process:
-   ```bash
-   cd path/to/Vencord
-   pnpm build
-   ```
-3. **Restart Discord Completely**: Since this plugin adds native background processing logic, a simple soft reload (Ctrl+R) is NOT enough.
-   - Right click the Discord icon in your System Tray and select **Quit**.
-   - Re-open Discord.
-4. Open your Vencord Settings in Discord, go to the **Plugins** tab, and enable **VenVid**.
 
-## Prerequisites
-- **FFmpeg & FFprobe**: These tools must be installed on your system and accessible via your system's `PATH`.
+</details>
+
+<details>
+<summary><strong>macOS</strong></summary>
+
+```bash
+brew install ffmpeg
+```
+Verify with:
+```bash
+ffmpeg -version && ffprobe -version
+```
+
+</details>
+
+<details>
+<summary><strong>Linux</strong></summary>
+
+**Debian / Ubuntu:**
+```bash
+sudo apt update && sudo apt install ffmpeg
+```
+
+**Fedora:**
+```bash
+sudo dnf install ffmpeg
+```
+
+**Arch:**
+```bash
+sudo pacman -S ffmpeg
+```
+
+Verify with:
+```bash
+ffmpeg -version && ffprobe -version
+```
+
+</details>
+
+### 2. Clone VenVid into Vencord
+
+Clone this repository into your Vencord `src/userplugins` folder (make sure the folder is named `venVid`):
+```bash
+cd path/to/Vencord/src/userplugins
+git clone https://github.com/CaiCheng-Li/venVid.git
+```
+
+### 3. Rebuild Vencord
+
+Rebuild so that the native FFmpeg processing elements are bundled into Vencord's main process:
+```bash
+cd path/to/Vencord
+pnpm build
+```
+
+### 4. Restart Discord
+
+Since this plugin adds native background processing logic, a simple soft reload (Ctrl+R) is **not** enough.
+- Right-click the Discord icon in your System Tray and select **Quit**.
+- Re-open Discord.
+
+### 5. Enable the plugin
+
+Open your Vencord Settings in Discord, go to the **Plugins** tab, and enable **VenVid**.
 
 ## License
 GPL-3.0-or-later; see [LICENSE](LICENSE).
