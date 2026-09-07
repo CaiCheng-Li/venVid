@@ -1,6 +1,6 @@
 import "./styles.css";
 
-import { Button } from "@components/Button";
+
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Paragraph } from "@components/Paragraph";
 import type { RenderModalProps } from "@vencord/discord-types";
@@ -54,51 +54,89 @@ interface TrimTimelineProps {
 }
 
 function TrimTimeline({ duration, currentTime, trimStart, trimEnd, onTrimStartChange, onTrimEndChange, onSeek }: TrimTimelineProps) {
+    const trackRef = useRef<HTMLDivElement>(null);
+    const [dragging, setDragging] = useState<"start" | "end" | null>(null);
+
+    const positionToTime = (clientX: number) => {
+        const track = trackRef.current;
+        if (!track || duration <= 0) return 0;
+        const rect = track.getBoundingClientRect();
+        return Math.max(0, Math.min(duration, ((clientX - rect.left) / rect.width) * duration));
+    };
+
+    useEffect(() => {
+        if (!dragging) return;
+        const onMouseMove = (e: MouseEvent) => {
+            const time = positionToTime(e.clientX);
+            if (dragging === "start") {
+                onTrimStartChange(Math.max(0, Math.min(trimEnd - 0.1, time)));
+            } else {
+                onTrimEndChange(Math.max(trimStart + 0.1, Math.min(duration, time)));
+            }
+        };
+        const onMouseUp = () => setDragging(null);
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+        return () => {
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
+        };
+    }, [dragging, trimStart, trimEnd, duration]);
+
+    const startPct = duration > 0 ? (trimStart / duration) * 100 : 0;
+    const endPct = duration > 0 ? (trimEnd / duration) * 100 : 100;
+    const playheadPct = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+    const handleTrackClick = (e: React.MouseEvent) => {
+        if (dragging) return;
+        onSeek(positionToTime(e.clientX));
+    };
+
     return (
         <div className="venvid-timeline-container" style={{ display: "flex", flexDirection: "column", gap: "8px", margin: "16px 0" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>{currentTime.toFixed(2)}s / {duration.toFixed(2)}s</span>
                 <span>Selected: {(trimEnd - trimStart).toFixed(2)}s</span>
             </div>
-            
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <label>Start: 
-                    <input 
-                        type="number" 
-                        min={0} 
-                        max={trimEnd} 
-                        step={0.1} 
-                        value={trimStart.toFixed(2)} 
-                        onChange={e => onTrimStartChange(Math.max(0, Math.min(trimEnd, parseFloat(e.target.value) || 0)))} 
-                        style={{ width: "60px", marginLeft: "4px" }}
-                    />
-                </label>
-                <input 
-                    type="range" 
-                    min={0} 
-                    max={duration} 
-                    step={0.1} 
-                    value={currentTime} 
-                    onChange={e => onSeek(parseFloat(e.target.value))}
-                    style={{ flex: 1 }}
+
+            <div className="venvid-trim-track" ref={trackRef} onClick={handleTrackClick}>
+                <div className="venvid-trim-region" style={{ left: `${startPct}%`, width: `${endPct - startPct}%` }} />
+                <div className="venvid-trim-playhead" style={{ left: `${playheadPct}%` }} />
+                <div
+                    className="venvid-trim-handle"
+                    style={{ left: `${startPct}%` }}
+                    onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setDragging("start"); }}
                 />
-                <label>End: 
-                    <input 
-                        type="number" 
-                        min={trimStart} 
-                        max={duration} 
-                        step={0.1} 
-                        value={trimEnd.toFixed(2)} 
-                        onChange={e => onTrimEndChange(Math.max(trimStart, Math.min(duration, parseFloat(e.target.value) || duration)))} 
-                        style={{ width: "60px", marginLeft: "4px" }}
-                    />
-                </label>
+                <div
+                    className="venvid-trim-handle"
+                    style={{ left: `${endPct}%` }}
+                    onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setDragging("end"); }}
+                />
             </div>
 
-            <div style={{ display: "flex", gap: "8px" }}>
-                <Button size="small" onClick={() => onTrimStartChange(currentTime)}>Set Start at Playhead</Button>
-                <Button size="small" onClick={() => onTrimEndChange(currentTime)}>Set End at Playhead</Button>
-                <Button size="small" variant="secondary" onClick={() => { onTrimStartChange(0); onTrimEndChange(duration); }}>Reset Trim</Button>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <label style={{ whiteSpace: "nowrap" }}>Start:
+                    <input
+                        type="number"
+                        min={0}
+                        max={trimEnd}
+                        step={0.1}
+                        value={trimStart.toFixed(2)}
+                        onChange={e => onTrimStartChange(Math.max(0, Math.min(trimEnd, parseFloat(e.target.value) || 0)))}
+                        style={{ width: "60px", marginLeft: "4px" }}
+                    />
+                </label>
+                <label style={{ whiteSpace: "nowrap" }}>End:
+                    <input
+                        type="number"
+                        min={trimStart}
+                        max={duration}
+                        step={0.1}
+                        value={trimEnd.toFixed(2)}
+                        onChange={e => onTrimEndChange(Math.max(trimStart, Math.min(duration, parseFloat(e.target.value) || duration)))}
+                        style={{ width: "60px", marginLeft: "4px" }}
+                    />
+                </label>
             </div>
         </div>
     );
@@ -113,10 +151,11 @@ interface EditorProps extends RenderModalProps {
     currentBatchIndex: number;
     totalInBatch: number;
     onNext: (replacement?: File) => void;
+    onPrev: () => void;
     onCancelAll: () => void;
 }
 
-function CompressionEditor({ context, fileIndex, currentBatchIndex, totalInBatch, onNext, onCancelAll, ...props }: EditorProps) {
+function CompressionEditor({ context, fileIndex, currentBatchIndex, totalInBatch, onNext, onPrev, onCancelAll, ...props }: EditorProps) {
     const original = context.attempt.files[fileIndex];
     
     const [url, setUrl] = useState<string>();
@@ -236,6 +275,11 @@ function CompressionEditor({ context, fileIndex, currentBatchIndex, totalInBatch
             const baseName = original.name.replace(`.${ext}`, "");
             const finalFile = new File(chunks.map(c => c.buffer) as BlobPart[], `${baseName}-compressed.mp4`, { type: "video/mp4" });
             
+            // Delete temp files now that the compressed output is in memory.
+            // The original user file is untouched — only the staged copy and
+            // encoded output inside the job's temp directory are removed.
+            await Native.disposeJob(jobId).catch(() => {});
+
             onNext(finalFile);
         } catch (err) {
             setError(String(err));
@@ -248,7 +292,7 @@ function CompressionEditor({ context, fileIndex, currentBatchIndex, totalInBatch
     return (
         <Modal
             {...props}
-            title={totalInBatch > 1 ? `Compress Video (${currentBatchIndex + 1}/${totalInBatch})` : "Compress Video"}
+            title="Compress Video"
             subtitle={`Destination: ${context.channelId}`}
             size="md"
             notice={error ? { type: "critical", message: error } : undefined}
@@ -260,14 +304,11 @@ function CompressionEditor({ context, fileIndex, currentBatchIndex, totalInBatch
                         onCancelAll();
                     }
                 }},
-                { text: "Skip", variant: "secondary", disabled: isEncoding, onClick: () => onNext() },
                 { text: jobState === "ready" ? (isLast ? "Attach Video" : "Attach & Next") : "Compress", variant: "primary", disabled: isEncoding || (jobState === "ready" && !outputSize), onClick: jobState === "ready" ? attach : startEncode }
             ]}
         >
             <div className="venvid-compression">
-                <Paragraph>{original.name}</Paragraph>
-                <Paragraph>This video is {formatBytes(original.size)}. The upload limit here is {formatBytes(context.limit)}.</Paragraph>
-                
+
                 {url && (
                     <VideoPreview 
                         url={url} 
@@ -287,12 +328,12 @@ function CompressionEditor({ context, fileIndex, currentBatchIndex, totalInBatch
                     onSeek={setSeekTime} 
                 />
 
-                <div style={{ display: "flex", gap: "16px", marginBottom: "16px", alignItems: "center" }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginBottom: "16px", alignItems: "center" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
                         <input type="checkbox" checked={removeAudio} onChange={e => setRemoveAudio(e.target.checked)} disabled={isEncoding} />
                         Remove Audio
                     </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
                         Resolution:
                         <select value={resolution || ""} onChange={e => setResolution(e.target.value as any || undefined)} disabled={isEncoding}>
                             <option value="">Auto</option>
@@ -302,7 +343,7 @@ function CompressionEditor({ context, fileIndex, currentBatchIndex, totalInBatch
                             <option value="360">360p</option>
                         </select>
                     </label>
-                    <div style={{ marginLeft: "auto" }}>
+                    <div style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
                         {jobState === "ready" && outputSize ? (
                             <strong>Final: {formatBytes(outputSize)}</strong>
                         ) : (
@@ -310,6 +351,28 @@ function CompressionEditor({ context, fileIndex, currentBatchIndex, totalInBatch
                         )}
                     </div>
                 </div>
+
+                {totalInBatch > 1 && (
+                    <div className="venvid-batch-nav">
+                        <button
+                            className="venvid-nav-arrow"
+                            disabled={currentBatchIndex === 0 || isEncoding}
+                            onClick={onPrev}
+                            aria-label="Previous video"
+                        >
+                            ◀
+                        </button>
+                        <span>{currentBatchIndex + 1} / {totalInBatch}</span>
+                        <button
+                            className="venvid-nav-arrow"
+                            disabled={currentBatchIndex === totalInBatch - 1 || isEncoding}
+                            onClick={() => onNext()}
+                            aria-label="Next video"
+                        >
+                            ▶
+                        </button>
+                    </div>
+                )}
 
                 {isEncoding && (
                     <div>
@@ -340,6 +403,12 @@ function BatchModalContent({ context, ...props }: RenderModalProps & { context: 
         }
     };
 
+    const handlePrev = () => {
+        if (currentBatchIndex > 0) {
+            setCurrentBatchIndex(currentBatchIndex - 1);
+        }
+    };
+
     const handleCancelAll = () => {
         props.onClose();
     };
@@ -353,6 +422,7 @@ function BatchModalContent({ context, ...props }: RenderModalProps & { context: 
             currentBatchIndex={currentBatchIndex}
             totalInBatch={context.indices.length}
             onNext={handleNext}
+            onPrev={handlePrev}
             onCancelAll={handleCancelAll}
         />
     );
