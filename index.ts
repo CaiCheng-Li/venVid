@@ -9,7 +9,7 @@ import definePlugin, { PluginNative } from "@utils/types";
 import { uploadPatch } from "./patches";
 import { intercept, startAdapter, stopAdapter } from "./uploadAdapter";
 
-const Native = VencordNative.pluginHelpers.venVid as PluginNative<typeof import("./native")>;
+const Native = VencordNative.pluginHelpers.VenVid as PluginNative<typeof import("./native")>;
 
 export default definePlugin({
     name: "VenVid",

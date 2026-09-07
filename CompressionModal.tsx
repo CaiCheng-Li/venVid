@@ -105,7 +105,7 @@ function TrimTimeline({ duration, currentTime, trimStart, trimEnd, onTrimStartCh
 }
 
 // eslint-disable-next-line no-undef
-const Native = VencordNative.pluginHelpers.venVid as any;
+const Native = VencordNative.pluginHelpers.VenVid as any;
 
 interface EditorProps extends RenderModalProps {
     context: ProofContext;
