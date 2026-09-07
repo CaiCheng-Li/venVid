@@ -1,0 +1,12 @@
+.venvid-proof {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-wrap: anywhere;
+}
+
+.venvid-proof-preview {
+    width: 100%;
+    max-height: 240px;
+    background: #000;
+}
