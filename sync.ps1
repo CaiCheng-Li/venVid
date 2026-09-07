@@ -14,7 +14,7 @@ if ([IO.Path]::GetFullPath($destination).Equals($sourceRoot, [StringComparison]:
 }
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 # Explicit file list: the build copy is disposable; edit only this repository.
-$files = @('index.ts', 'patches.ts', 'attempt.ts', 'limits.ts', 'uploadAdapter.ts', 'CompressionModal.tsx', 'compression.ts', 'proofVideo.ts', 'styles.css', 'README.md', 'LICENSE', 'types.ts', 'native.ts', 'native')
+$files = @('index.ts', 'patches.ts', 'attempt.ts', 'limits.ts', 'uploadAdapter.ts', 'CompressionModal.tsx', 'compression.ts', 'styles.css', 'README.md', 'LICENSE', 'types.ts', 'native.ts', 'native')
 foreach ($file in $files) {
     Copy-Item -LiteralPath (Join-Path $sourceRoot $file) -Destination $destination -Force -Recurse
 }
