@@ -17,15 +17,19 @@ const CHUNK_SIZE = 5 * 1024 * 1024;
 interface Run {
     id: string;
     canceled: boolean;
+    finished: Promise<void>;
     timer?: ReturnType<typeof setTimeout>;
+    wake?: () => void;
 }
 
 export function useCompressionJob(original: File) {
     const active = useRef<Run | null>(null);
     const mounted = useRef(true);
     const running = useRef(false);
+    const cancelInProgress = useRef(false);
     const pendingCleanup = useRef(new Set<string>());
     const [busy, setBusy] = useState(false);
+    const [canceling, setCanceling] = useState(false);
     const [status, setStatus] = useState<JobStatus>();
     const [output, setOutput] = useState<File>();
     const [error, setError] = useState<string>();
@@ -38,6 +42,7 @@ export function useCompressionJob(original: File) {
             if (run) {
                 run.canceled = true;
                 clearTimeout(run.timer);
+                run.wake?.();
             }
             for (const id of pendingCleanup.current) {
                 void Native.disposeJob(id).catch(err => logger.error("Temporary video cleanup failed", err));
@@ -52,9 +57,11 @@ export function useCompressionJob(original: File) {
     };
 
     const compress = async (options: Omit<EncodeOptions, "duration">) => {
-        if (running.current) return;
+        if (running.current || cancelInProgress.current) return;
         running.current = true;
-        const run: Run = { id: `venvid-${crypto.randomUUID()}`, canceled: false };
+        let finish!: () => void;
+        const finished = new Promise<void>(resolve => { finish = resolve; });
+        const run: Run = { id: `venvid-${crypto.randomUUID()}`, canceled: false, finished };
         active.current = run;
         const isActive = () => mounted.current && !run.canceled && active.current === run;
         const checkActive = () => {
@@ -101,17 +108,37 @@ export function useCompressionJob(original: File) {
             checkActive();
             polling = false;
             clearTimeout(run.timer);
-            const ready = await Native.getJobStatus(run.id);
+            let ready = await Native.getJobStatus(run.id);
             checkActive();
-            if (ready.state !== "ready" || !ready.bytesTotal || ready.bytesTotal > options.targetBytes) {
-                throw new Error("The compressed video is not ready or exceeds the upload limit.");
+            // Older native helpers acknowledge the start immediately. A renderer reload can
+            // leave one of those helpers running until Discord is fully restarted.
+            while (ready.state !== "ready" && ready.state !== "error" && ready.state !== "canceled") {
+                setStatus(ready);
+                await new Promise<void>(resolve => {
+                    run.wake = resolve;
+                    run.timer = setTimeout(resolve, 300);
+                });
+                run.wake = undefined;
+                checkActive();
+                ready = await Native.getJobStatus(run.id);
+                checkActive();
             }
+            if (ready.state === "error") throw new Error(ready.message || "Video compression failed.");
+            if (ready.state === "canceled") throw new Error("Video compression was canceled.");
+            if (!Number.isSafeInteger(ready.bytesTotal) || ready.bytesTotal! <= 0) {
+                throw new Error("Compression finished without a valid output file. Fully quit and reopen Discord, then retry.");
+            }
+            if (ready.bytesTotal! > options.targetBytes) {
+                throw new Error("The compressed video exceeds the upload limit. Try a shorter selection or remove audio.");
+            }
+            const outputSize = ready.bytesTotal!;
             setStatus({ state: "verifying", message: "Preparing attachment and removing temporary files", progress: 100 });
             const chunks: Uint8Array<ArrayBuffer>[] = [];
-            for (let offset = 0; offset < ready.bytesTotal;) {
+            for (let offset = 0; offset < outputSize;) {
                 checkActive();
-                const length = Math.min(CHUNK_SIZE, ready.bytesTotal - offset);
+                const length = Math.min(CHUNK_SIZE, outputSize - offset);
                 const chunk = await Native.readOutputChunk(run.id, offset, length);
+                checkActive();
                 if (chunk.byteLength !== length) throw new Error("Could not read the complete compressed video.");
                 chunks.push(new Uint8Array(chunk));
                 offset += chunk.byteLength;
@@ -141,8 +168,45 @@ export function useCompressionJob(original: File) {
                 setBusy(false);
             }
             running.current = false;
+            finish();
         }
     };
 
-    return { busy, status, output, error, reset, compress, setError };
+    const cancel = async (): Promise<boolean> => {
+        if (cancelInProgress.current) return false;
+        cancelInProgress.current = true;
+        setCanceling(true);
+        setBusy(true);
+        reset();
+        setStatus({ state: "canceled", message: "Removing temporary video files", progress: 0 });
+        const run = active.current;
+        if (run) {
+            run.canceled = true;
+            clearTimeout(run.timer);
+            run.wake?.();
+        }
+        try {
+            // Stop native work immediately, including FFmpeg holding a partial output open.
+            // The run's finally block also cleans jobs whose prepare/read IPC was still pending.
+            await Promise.allSettled([...pendingCleanup.current].map(id => Native.disposeJob(id)));
+            await run?.finished;
+            for (const id of pendingCleanup.current) {
+                await Native.disposeJob(id);
+                pendingCleanup.current.delete(id);
+            }
+            active.current = null;
+            return true;
+        } catch (err) {
+            if (mounted.current) setError(`Could not remove temporary video files. Click Cancel to retry. ${String(err)}`);
+            return false;
+        } finally {
+            cancelInProgress.current = false;
+            if (mounted.current) {
+                setCanceling(false);
+                setBusy(false);
+            }
+        }
+    };
+
+    return { busy, canceling, status, output, error, reset, compress, cancel, setError };
 }

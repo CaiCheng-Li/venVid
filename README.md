@@ -111,7 +111,7 @@ Drag anywhere on the timeline to scrub; drag the blue handles to trim. Focus a t
 
 The estimated size appears above the preview, below Destination, and changes to the final size after compression. Changing the trim or compression settings clears the previous result so the attached video matches the displayed settings.
 
-Compression works on a temporary staged copy. Once encoding finishes, VenVid loads the result into memory and deletes the staged input, encoded file, and pass logs before enabling Attach. The original clip is never overwritten. Canceling or closing the editor also cleans up the job; a cleanup failure prevents attachment and can be retried.
+Compression works on a temporary staged copy. Once encoding finishes, VenVid loads the result into memory and deletes the staged input, encoded file, and pass logs before enabling Attach. The original clip is never overwritten. Cancel stops processing immediately and waits for the staged input, partial compressed output, and pass logs to be deleted before closing the editor. If cleanup fails, the editor stays open with an error and Cancel retries the deletion. Unexpected editor removal also triggers cleanup.
 
 ## Development checks
 

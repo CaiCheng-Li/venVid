@@ -39,7 +39,7 @@ function CompressionEditor({ context, fileIndex, currentBatchIndex, totalInBatch
     const videoRef = useRef<HTMLVideoElement>(null);
     const scrubbing = useRef(false);
     const resumePlayback = useRef(false);
-    const { busy, status, output, error, reset, compress, setError } = useCompressionJob(original);
+    const { busy, canceling, status, output, error, reset, compress, cancel, setError } = useCompressionJob(original);
 
     useEffect(() => {
         const preview = URL.createObjectURL(original);
@@ -63,16 +63,23 @@ function CompressionEditor({ context, fileIndex, currentBatchIndex, totalInBatch
         try { onNext(output); }
         catch (err) { setError(String(err)); }
     };
+    const cancelAndClose = async () => {
+        if (await cancel()) onCancelAll();
+    };
 
     return (
         <Modal
             {...props}
+            onClose={cancelAndClose}
             title="Compress Video"
             subtitle={`Destination: ${context.channelId}`}
             size="md"
             notice={error ? { type: "critical", message: error } : undefined}
             actions={[
-                { text: totalInBatch > 1 ? "Cancel Batch" : "Cancel", variant: "secondary", onClick: onCancelAll },
+                {
+                    text: canceling ? "Canceling…" : totalInBatch > 1 ? "Cancel Batch" : "Cancel",
+                    variant: "secondary", disabled: canceling, onClick: cancelAndClose
+                },
                 {
                     text: output ? (isLast ? "Attach Video" : "Attach & Next") : busy ? "Compressing…" : "Compress",
                     variant: "primary",

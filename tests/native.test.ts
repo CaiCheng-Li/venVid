@@ -11,6 +11,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { after, before, test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { calculateBitrate } from "../compression";
 import { disposeJob, prepareJob, probeJob, readOutputChunk, stageInputChunk, startJobEncode } from "../native";
@@ -89,6 +90,42 @@ test("cancel during encoding closes FFmpeg before removing its files", async () 
     await disposeJob(event, job.id);
     await rejected;
     assert.equal(job.process, undefined);
+    assert.equal(fs.existsSync(job.dir), false);
+    assert.equal(hash(fs.readFileSync(fixture)), originalHash);
+});
+
+test("cancel after the second pass creates a partial compressed file removes output and pass logs", async () => {
+    const job = await stage("test-cancel-partial-output");
+    const probe = await probeJob(event, job.id);
+    const encode = startJobEncode(event, job.id, {
+        duration: probe.duration, targetBytes: 250_000, audioRate: 128000,
+        trimStart: 0, trimEnd: 4, removeAudio: true
+    });
+    // Register the rejection handler before cancellation.
+    const settled = encode.then(() => undefined, error => error);
+    try {
+        const deadline = Date.now() + 10_000;
+        while (!fs.existsSync(job.outputPath) && Date.now() < deadline) await delay(1);
+        assert.equal(fs.existsSync(job.outputPath), true);
+        assert.equal(job.state, "encoding", "Cancel must happen while FFmpeg is still running");
+        assert.ok(job.process);
+        assert.ok(fs.readdirSync(job.dir).some(file => file.startsWith("passlog")));
+        await disposeJob(event, job.id);
+        assert.ok(await settled instanceof Error);
+        assert.equal(job.process, undefined);
+        assert.equal(fs.existsSync(job.outputPath), false);
+        assert.equal(fs.existsSync(job.dir), false);
+        assert.equal(hash(fs.readFileSync(fixture)), originalHash);
+    } finally {
+        await disposeJob(event, job.id);
+        await settled;
+    }
+});
+
+test("cancel while staging removes input and prevents later chunks from recreating files", async () => {
+    const job = await stage("test-cancel-staging");
+    await disposeJob(event, job.id);
+    await assert.rejects(stageInputChunk(event, job.id, originalBytes), /Job not found/);
     assert.equal(fs.existsSync(job.dir), false);
     assert.equal(hash(fs.readFileSync(fixture)), originalHash);
 });
