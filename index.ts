@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { Logger } from "@utils/Logger";
 import definePlugin, { PluginNative } from "@utils/types";
 
 import { uploadPatch } from "./patches";
@@ -13,13 +14,13 @@ const Native = VencordNative.pluginHelpers.VenVid as PluginNative<typeof import(
 
 export default definePlugin({
     name: "VenVid",
-    description: "Video attachment integration proof. Compression and trimming are not implemented yet.",
+    description: "Preview, trim, and compress oversized video attachments to fit your upload limit.",
     authors: [],
     patches: [uploadPatch],
     start: startAdapter,
     stop: () => {
         stopAdapter();
-        Native.cleanupAllJobsIpc();
+        void Native.cleanupAllJobsIpc().catch(error => new Logger("VenVid").error("Temporary video cleanup failed", error));
     },
     intercept
 });

@@ -94,7 +94,7 @@ export function intercept(original: UploadFunction, receiver: unknown, rawArgs: 
             try { return original.apply(receiver, savedArgs); }
             finally { bypass.delete(resumedFiles); }
         }, [...files]);
-        
+
         const context: ProofContext = {
             attempt, channelId: channel.id, guildId, draftType, limit,
             indices: oversized, origin: options?.origin,
@@ -105,7 +105,7 @@ export function intercept(original: UploadFunction, receiver: unknown, rawArgs: 
                     throw new Error("The original destination is unavailable or attachments are no longer allowed. Keep this preview or cancel.");
                 const currentLimit = resolveLimit(context.guildId);
                 if (currentLimit == null) throw new Error("Could not recheck the destination's upload limit. Try again.");
-                
+
                 const finalFiles = [...attempt.files];
                 for (const [index, file] of replacements) {
                     if (!(file instanceof File) || file.type !== "video/mp4" || file.size <= 0 || file.size > currentLimit) {
@@ -113,7 +113,7 @@ export function intercept(original: UploadFunction, receiver: unknown, rawArgs: 
                     }
                     finalFiles[index] = file;
                 }
-                
+
                 attempt.continue(finalFiles);
             }
         };

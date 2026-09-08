@@ -11,7 +11,7 @@ import { IpcMainInvokeEvent } from "electron";
 import * as fs from "fs";
 
 import { startEncode } from "./native/encoder";
-import { cleanupAllJobs,createJob, deleteJob, getJob } from "./native/jobs";
+import { cleanupAllJobs, createJob, deleteJob, getJob } from "./native/jobs";
 import { probeMedia } from "./native/media";
 import type { EncodeOptions, JobStatus, ProbeResult } from "./types";
 
@@ -38,6 +38,7 @@ export async function prepareJob(_event: IpcMainInvokeEvent, jobId: string): Pro
 export async function stageInputChunk(_event: IpcMainInvokeEvent, jobId: string, chunk: Uint8Array): Promise<void> {
     const job = getJob(jobId);
     if (!job) throw new Error("Job not found");
+    if (job.state !== "staging") throw new Error("Job is not accepting input");
     // Write chunk sequentially
     fs.appendFileSync(job.inputPath, Buffer.from(chunk));
 }
@@ -59,11 +60,7 @@ export async function probeJob(_event: IpcMainInvokeEvent, jobId: string): Promi
 }
 
 export async function startJobEncode(_event: IpcMainInvokeEvent, jobId: string, options: EncodeOptions): Promise<void> {
-    // startEncode returns a promise that completes when encoding completes.
-    // We do NOT await it here, because we want the IPC call to return immediately so the UI can poll status.
-    void startEncode(jobId, options).catch(err => {
-        console.error("Encode failed:", err);
-    });
+    await startEncode(jobId, options);
 }
 
 export async function getJobStatus(_event: IpcMainInvokeEvent, jobId: string): Promise<JobStatus> {
@@ -82,26 +79,31 @@ export async function cancelJob(_event: IpcMainInvokeEvent, jobId: string): Prom
     if (!job) return;
     job.state = "canceled";
     job.message = "Canceled";
-    deleteJob(jobId);
+    await deleteJob(jobId);
 }
 
 export async function readOutputChunk(_event: IpcMainInvokeEvent, jobId: string, offset: number, length: number): Promise<Uint8Array> {
     const job = getJob(jobId);
     if (!job) throw new Error("Job not found");
     if (job.state !== "ready") throw new Error("Job is not ready");
+    if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length <= 0 || length > 5 * 1024 * 1024) {
+        throw new Error("Invalid output chunk range");
+    }
 
     const fd = fs.openSync(job.outputPath, "r");
-    const buffer = Buffer.alloc(length);
-    const bytesRead = fs.readSync(fd, buffer, 0, length, offset);
-    fs.closeSync(fd);
-
-    return new Uint8Array(buffer.slice(0, bytesRead));
+    try {
+        const buffer = Buffer.alloc(length);
+        const bytesRead = fs.readSync(fd, buffer, 0, length, offset);
+        return new Uint8Array(buffer.subarray(0, bytesRead));
+    } finally {
+        fs.closeSync(fd);
+    }
 }
 
 export async function disposeJob(_event: IpcMainInvokeEvent, jobId: string): Promise<void> {
-    deleteJob(jobId);
+    await deleteJob(jobId);
 }
 
 export async function cleanupAllJobsIpc(_event: IpcMainInvokeEvent): Promise<void> {
-    cleanupAllJobs();
+    await cleanupAllJobs();
 }

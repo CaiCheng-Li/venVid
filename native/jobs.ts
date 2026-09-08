@@ -19,6 +19,7 @@ export interface Job {
     message: string;
     bytesTotal?: number;
     process?: import("child_process").ChildProcess;
+    cleanup?: Promise<void>;
 }
 
 const activeJobs = new Map<string, Job>();
@@ -32,11 +33,11 @@ export function getPluginTempDir() {
 }
 
 export function createJob(id: string): Job {
+    if (!/^[a-zA-Z0-9-]{1,100}$/.test(id)) throw new Error("Invalid job ID");
     if (activeJobs.has(id)) {
         throw new Error("Job already exists");
     }
-    const dir = path.join(getPluginTempDir(), id);
-    fs.mkdirSync(dir, { recursive: true });
+    const dir = fs.mkdtempSync(path.join(getPluginTempDir(), "job-"));
 
     const job: Job = {
         id,
@@ -56,33 +57,46 @@ export function getJob(id: string): Job | undefined {
     return activeJobs.get(id);
 }
 
-export function deleteJob(id: string) {
+export async function deleteJob(id: string): Promise<void> {
     const job = activeJobs.get(id);
     if (!job) return;
-
-    if (job.process) {
-        try {
-            job.process.kill("SIGKILL");
-        } catch (e) {}
-    }
-
-    activeJobs.delete(id);
-
+    if (job.cleanup) return job.cleanup;
+    job.state = "canceled";
+    job.cleanup = (async () => {
+        const child = job.process;
+        if (child) {
+            // Wait for stdio and file handles to close before removing files on Windows.
+            await new Promise<void>((resolve, reject) => {
+                const closed = () => resolve();
+                child.once("close", closed);
+                if (child.exitCode === null && child.signalCode === null && !child.kill("SIGKILL")) {
+                    child.removeListener("close", closed);
+                    reject(new Error("Could not stop the video process. Try cleanup again."));
+                }
+            });
+        }
+        const root = pluginTempDir && path.resolve(pluginTempDir);
+        if (!root || path.dirname(path.resolve(job.dir)).toLowerCase() !== root.toLowerCase()) {
+            throw new Error("Job directory is outside the temporary workspace");
+        }
+        await fs.promises.rm(job.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+        activeJobs.delete(id);
+    })();
     try {
-        fs.rmSync(job.dir, { recursive: true, force: true });
-    } catch (e) {
-        console.error("Failed to clean up job directory", e);
+        await job.cleanup;
+    } finally {
+        // Keep failed cleanups registered so a later dispose/disable can retry.
+        job.cleanup = undefined;
     }
 }
 
-export function cleanupAllJobs() {
-    for (const id of activeJobs.keys()) {
-        deleteJob(id);
-    }
-    if (pluginTempDir) {
-        try {
-            fs.rmSync(pluginTempDir, { recursive: true, force: true });
-        } catch (e) {}
+export async function cleanupAllJobs() {
+    const results = await Promise.allSettled([...activeJobs.keys()].map(deleteJob));
+    const failed = results.find(result => result.status === "rejected");
+    if (failed?.status === "rejected") throw failed.reason;
+    if (pluginTempDir && !activeJobs.size) {
+        // Job directories are already gone; remove only the empty parent.
+        fs.rmdirSync(pluginTempDir);
         pluginTempDir = null;
     }
 }

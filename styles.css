@@ -1,14 +1,170 @@
-.venvid-proof {
+.venvid-compression {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    overflow-wrap: anywhere;
+    gap: 16px;
+    color: var(--text-normal, #dbdee1);
 }
 
-.venvid-proof-preview {
-    width: 100%;
-    max-height: 240px;
+.venvid-muted {
+    color: var(--text-muted, #949ba4);
+}
+
+.venvid-size-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 10px;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+.venvid-preview-container {
+    display: flex;
+    justify-content: center;
+    overflow: hidden;
+    border: 1px solid var(--background-modifier-accent, #ffffff14);
+    border-radius: 10px;
     background: #000;
+}
+
+.venvid-preview-container video {
+    display: block;
+    width: 100%;
+    max-height: 300px;
+}
+
+.venvid-timeline-container {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 0 8px;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+.venvid-timeline-summary,
+.venvid-trim-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.venvid-trim-track {
+    position: relative;
+    height: 32px;
+    border-radius: 5px;
+    background: var(--background-secondary-alt, #ffffff0f);
+    cursor: ew-resize;
+    user-select: none;
+    touch-action: none;
+}
+
+.venvid-trim-region {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    box-sizing: border-box;
+    border-block: 2px solid var(--brand-500, #5865f2);
+    background: var(--brand-500-alpha-30, #5865f24d);
+    pointer-events: none;
+}
+
+.venvid-trim-handle {
+    position: absolute;
+    top: -3px;
+    z-index: 2;
+    width: 12px;
+    height: calc(100% + 6px);
+    border-radius: 4px;
+    background: var(--brand-500, #5865f2);
+    cursor: ew-resize;
+    touch-action: none;
+    transform: translateX(-50%);
+}
+
+.venvid-trim-handle::after {
+    position: absolute;
+    inset: 12px 5px;
+    border-radius: 1px;
+    background: #ffffffb3;
+    content: "";
+}
+
+.venvid-trim-handle:hover {
+    background: var(--brand-400, #7289da);
+}
+
+.venvid-trim-handle[aria-disabled="true"] {
+    cursor: default;
+    opacity: 0.6;
+}
+
+.venvid-trim-playhead {
+    position: absolute;
+    top: -6px;
+    z-index: 3;
+    width: 2px;
+    height: calc(100% + 12px);
+    background: #fff;
+    box-shadow: 0 0 3px #0009;
+    pointer-events: none;
+    transform: translateX(-50%);
+}
+
+.venvid-trim-playhead::before {
+    position: absolute;
+    top: -1px;
+    left: -3px;
+    width: 8px;
+    height: 6px;
+    border-radius: 2px;
+    background: #fff;
+    content: "";
+}
+
+.venvid-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--background-modifier-accent, #ffffff14);
+}
+
+.venvid-options label,
+.venvid-trim-fields label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.venvid-compression input,
+.venvid-compression select {
+    accent-color: var(--brand-500, #5865f2);
+}
+
+.venvid-trim-fields input,
+.venvid-options select {
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border: 1px solid var(--background-modifier-accent, #ffffff14);
+    border-radius: 5px;
+    background: var(--input-background, #1e1f22);
+    color: var(--text-normal, #dbdee1);
+    font: inherit;
+}
+
+.venvid-trim-fields input {
+    width: 84px;
+}
+
+.venvid-compression :focus-visible {
+    outline: 2px solid var(--focus-primary, #00a8fc);
+    outline-offset: 3px;
 }
 
 .venvid-batch-nav {
@@ -16,81 +172,37 @@
     align-items: center;
     justify-content: center;
     gap: 12px;
-    margin-bottom: 8px;
 }
 
 .venvid-nav-arrow {
+    padding: 6px 10px;
+    border: 1px solid var(--background-modifier-accent, #ffffff14);
+    border-radius: 5px;
     background: transparent;
-    border: 1px solid var(--interactive-normal, #b5bac1);
     color: var(--interactive-normal, #b5bac1);
-    border-radius: 4px;
-    padding: 4px 10px;
     font-size: 14px;
-    cursor: pointer;
     line-height: 1;
+    cursor: pointer;
 }
 
 .venvid-nav-arrow:hover:not(:disabled) {
-    background: var(--background-modifier-hover, rgba(79, 84, 92, 0.16));
+    background: var(--background-modifier-hover, #4f545c29);
     color: var(--interactive-hover, #dcddde);
-    border-color: var(--interactive-hover, #dcddde);
 }
 
-.venvid-nav-arrow:disabled {
-    opacity: 0.3;
+.venvid-compression :disabled {
+    opacity: 0.5;
     cursor: not-allowed;
 }
 
-/* Trim track */
-.venvid-trim-track {
-    position: relative;
-    height: 28px;
-    background: var(--background-secondary-alt, rgba(255, 255, 255, 0.06));
-    border-radius: 4px;
-    cursor: pointer;
-    user-select: none;
+.venvid-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 13px;
 }
 
-/* Highlighted selected region between handles */
-.venvid-trim-region {
-    position: absolute;
-    top: 0;
-    height: 100%;
-    background: var(--brand-500-alpha-30, rgba(88, 101, 242, 0.3));
-    border-top: 2px solid var(--brand-500, #5865f2);
-    border-bottom: 2px solid var(--brand-500, #5865f2);
-    pointer-events: none;
-    box-sizing: border-box;
-}
-
-/* Draggable trim handles */
-.venvid-trim-handle {
-    position: absolute;
-    top: -2px;
-    width: 10px;
-    height: calc(100% + 4px);
-    background: var(--brand-500, #5865f2);
-    border-radius: 3px;
-    cursor: ew-resize;
-    transform: translateX(-50%);
-    z-index: 2;
-    transition: background 0.1s;
-}
-
-.venvid-trim-handle:hover,
-.venvid-trim-handle:active {
-    background: var(--brand-400, #7289da);
-}
-
-/* Playhead indicator */
-.venvid-trim-playhead {
-    position: absolute;
-    top: 0;
-    width: 2px;
-    height: 100%;
-    background: #fff;
-    transform: translateX(-50%);
-    pointer-events: none;
-    z-index: 1;
-    opacity: 0.9;
+.venvid-progress progress {
+    width: 100%;
+    accent-color: var(--brand-500, #5865f2);
 }

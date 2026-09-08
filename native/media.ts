@@ -29,6 +29,7 @@ export function probeMedia(jobId: string): Promise<ProbeResult> {
             shell: false,
             windowsHide: true
         });
+        job.process = ffprobe;
 
         let output = "";
         ffprobe.stdout.on("data", chunk => output += chunk);
@@ -38,6 +39,8 @@ export function probeMedia(jobId: string): Promise<ProbeResult> {
         });
 
         ffprobe.on("close", code => {
+            job.process = undefined;
+            if (job.state === "canceled") return reject(new Error("Canceled"));
             if (code !== 0) {
                 return reject(new Error(`ffprobe exited with code ${code}`));
             }

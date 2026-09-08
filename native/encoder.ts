@@ -7,6 +7,7 @@
 import { spawn } from "child_process";
 import * as fs from "fs";
 
+import { calculateBitrate } from "../compression";
 import type { EncodeOptions } from "../types";
 import { getJob } from "./jobs";
 
@@ -17,35 +18,41 @@ function getFfmpegCommand(): string {
 export function startEncode(jobId: string, options: EncodeOptions): Promise<void> {
     const job = getJob(jobId);
     if (!job) return Promise.reject(new Error("Job not found"));
+    if (job.state !== "probing") return Promise.reject(new Error("Job is not ready to encode"));
 
     job.state = "encoding";
     job.progress = 0;
     job.message = "Starting encode...";
 
     const { duration, targetBytes, trimStart, trimEnd, removeAudio, resolution } = options;
-    const safetyFactor = 0.97;
-    const audioBps = removeAudio ? 0 : 128000;
-
-    const videoBps = Math.floor((targetBytes * 8 * safetyFactor) / duration) - audioBps;
-    if (videoBps <= 0) {
+    const selectedDuration = trimEnd - trimStart;
+    const { videoBps, audioBps, isValid } = calculateBitrate(selectedDuration, targetBytes, removeAudio);
+    if (!Number.isFinite(duration) || !Number.isFinite(trimStart) || !Number.isFinite(trimEnd)
+        || trimStart < 0 || trimEnd > duration + 0.1 || selectedDuration <= 0) {
+        return Promise.reject(new Error("Invalid trim range"));
+    }
+    if (!isValid) {
         return Promise.reject(new Error("Target size is too small for this duration and audio setting."));
     }
 
     let filterComplex = "";
     if (resolution) {
-        // e.g. "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,format=yuv420p"
-        // But we need to ensure even dimensions:
-        filterComplex = `scale='trunc(min(${resolution},iw)/2)*2':'trunc(min(${resolution}*ih/iw,ih)/2)*2':force_original_aspect_ratio=decrease`;
+        if (!["1080", "720", "480", "360", "240", "144"].includes(resolution)) {
+            return Promise.reject(new Error("Invalid resolution"));
+        }
+        filterComplex = `scale=-2:'trunc(min(${resolution},ih)/2)*2'`;
     }
 
     // Default filters
-    const vf = filterComplex ? `${filterComplex},format=yuv420p` : "format=yuv420p";
+    const vf = `${filterComplex || "scale=trunc(iw/2)*2:trunc(ih/2)*2"},format=yuv420p`;
 
     const commonArgs = [
         "-y",
         "-ss", trimStart.toString(),
         "-t", (trimEnd - trimStart).toString(),
         "-i", job.inputPath,
+        "-map", "0:v:0", "-map", "0:a:0?",
+        "-c:v", "libx264",
         "-vf", vf,
         "-b:v", `${videoBps}`,
         "-passlogfile", job.passlogPath
@@ -87,7 +94,7 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
                         const m = parseFloat(match[2]);
                         const s = parseFloat(match[3]);
                         const time = h * 3600 + m * 60 + s;
-                        const p = (time / duration) * 50;
+                        const p = Math.min(50, (time / selectedDuration) * 50);
                         job.progress = (passNum === 1 ? 0 : 50) + p;
                     }
                 });
@@ -108,12 +115,15 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
                     job.state = "verifying";
                     job.message = "Verifying output...";
                     const stat = fs.statSync(job.outputPath);
+                    if (stat.size <= 0 || stat.size > targetBytes) {
+                        throw new Error("Encoded video exceeds the upload limit. Try a shorter selection or remove audio.");
+                    }
                     job.bytesTotal = stat.size;
                     job.state = "ready";
                     job.progress = 100;
                     job.message = "Ready";
                     resolve();
-                }
+                } else reject(new Error("Canceled"));
             })
             .catch(err => {
                 if (job.state !== "canceled") {
@@ -124,4 +134,3 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
             });
     });
 }
-

@@ -104,3 +104,15 @@ Open your Vencord Settings in Discord, go to the **Plugins** tab, and enable **V
 
 ## License
 GPL-3.0-or-later; see [LICENSE](LICENSE).
+
+## Preview and temporary files
+
+Drag anywhere on the timeline to scrub; drag the blue handles to trim. Focus a timeline control and use the arrow keys for 0.1-second adjustments, Shift for 1-second adjustments, or Home/End to reach an endpoint.
+
+The estimated size appears above the preview, below Destination, and changes to the final size after compression. Changing the trim or compression settings clears the previous result so the attached video matches the displayed settings.
+
+Compression works on a temporary staged copy. Once encoding finishes, VenVid loads the result into memory and deletes the staged input, encoded file, and pass logs before enabling Attach. The original clip is never overwritten. Canceling or closing the editor also cleans up the job; a cleanup failure prevents attachment and can be retried.
+
+## Development checks
+
+From the Vencord checkout root, run the native regression checks with `pnpm exec tsx --test ../venVid/tests/native.test.ts` when using this workspace's standalone repository layout. These checks require FFmpeg and FFprobe and cover encoding, cancellation, temporary-file cleanup, and original-file preservation.
