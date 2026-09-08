@@ -1,6 +1,10 @@
 # VenVid
 
-VenVid is a Vencord plugin that intercepts oversized video uploads, offering an intuitive UI to compress, trim, and change the resolution of your videos right inside Discord before they are sent. 
+VenVid is a Vencord plugin that intercepts oversized video uploads, offering an intuitive UI to compress, trim, and change the resolution of your videos right inside Discord before they are sent.
+
+<p align="center">
+  <img width="481" height="650" alt="image" src="https://github.com/user-attachments/assets/5e1b4cb8-5eea-4e43-b90a-bc8f4d5b59c3" />
+</p>
 
 ## Features
 - **Upload Interception**: Automatically detects when you drag & drop, paste, or select oversized video files.
