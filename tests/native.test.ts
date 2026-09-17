@@ -122,6 +122,17 @@ test("cancel after the second pass creates a partial compressed file removes out
     }
 });
 
+test("a failed pass reports FFmpeg's own message, not just an exit code", async () => {
+    const job = await stage("test-encode-failure");
+    const probe = await probeJob(event, job.id);
+    fs.writeFileSync(job.inputPath, Buffer.alloc(4096));
+    await assert.rejects(startJobEncode(event, job.id, {
+        duration: probe.duration, targetBytes: 250_000, audioRate: 128000,
+        trimStart: 0, trimEnd: 4, removeAudio: true
+    }), /on pass 1: \S/);
+    await disposeJob(event, job.id);
+});
+
 test("cancel while staging removes input and prevents later chunks from recreating files", async () => {
     const job = await stage("test-cancel-staging");
     await disposeJob(event, job.id);

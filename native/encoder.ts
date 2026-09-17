@@ -15,6 +15,17 @@ function getFfmpegCommand(): string {
     return "ffmpeg";
 }
 
+// An exit code on its own says nothing useful (-2 is just ENOENT), so keep the
+// tail of FFmpeg's own diagnostics and report that instead.
+function describeFailure(stderr: string): string {
+    const lines = stderr
+        .split(/[\r\n]+/)
+        .map(line => line.trim())
+        .filter(line => line && !/^(frame|size)=/.test(line));
+    const tail = lines.slice(-3).join(" / ");
+    return tail ? `: ${tail}` : "";
+}
+
 export function startEncode(jobId: string, options: EncodeOptions): Promise<void> {
     const job = getJob(jobId);
     if (!job) return Promise.reject(new Error("Job not found"));
@@ -62,8 +73,10 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
         ...commonArgs,
         "-an",
         "-pass", "1",
-        "-f", "mp4",
-        process.platform === "win32" ? "NUL" : "/dev/null"
+        // The null muxer discards the output itself, so pass 1 never has to name a
+        // platform-specific device. NUL and /dev/null both depend on the child's
+        // working directory resolving, which is not guaranteed under Discord.
+        "-f", "null", "-"
     ];
 
     const pass2Args = [
@@ -83,11 +96,18 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
                 job.message = `Encoding pass ${passNum}...`;
                 job.progress = passNum === 1 ? 0 : 50;
 
-                const proc = spawn(getFfmpegCommand(), args, { shell: false, windowsHide: true });
+                const proc = spawn(getFfmpegCommand(), args, {
+                    shell: false,
+                    windowsHide: true,
+                    cwd: job.dir,
+                    stdio: ["ignore", "ignore", "pipe"]
+                });
                 job.process = proc;
 
+                let stderrTail = "";
                 proc.stderr.on("data", chunk => {
                     const output = chunk.toString();
+                    stderrTail = (stderrTail + output).slice(-4000);
                     const match = output.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/);
                     if (match) {
                         const h = parseFloat(match[1]);
@@ -102,7 +122,7 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
                 proc.on("error", err => rej(new Error(`FFmpeg error on pass ${passNum}: ${err.message}`)));
                 proc.on("close", code => {
                     job.process = undefined;
-                    if (code !== 0) rej(new Error(`FFmpeg exited with code ${code} on pass ${passNum}`));
+                    if (code !== 0) rej(new Error(`FFmpeg exited with code ${code} on pass ${passNum}${describeFailure(stderrTail)}`));
                     else res();
                 });
             });
