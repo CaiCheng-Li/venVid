@@ -468,15 +468,18 @@ Follow the installer's uninstall prompts, then reopen Discord.
 
 ## For developers
 
-The normal installation above puts the plugin directly inside Vencord. From the **Vencord root**, its native regression tests can be run with:
+The normal installation above puts the plugin directly inside Vencord. From the **Vencord root**, its regression tests can be run with:
 
 ```bash
 npx --yes pnpm@11.9.0 exec tsx --test src/userplugins/venVid/tests/native.test.ts
+npx --yes pnpm@11.9.0 exec tsx --test src/userplugins/venVid/tests/matchers.test.ts
 ```
 
 On Windows, use `npx.cmd` in place of `npx`.
 
-For the separate-repository development layout, keep `venVid` beside `Vencord`, edit only the standalone plugin files, and run `& ../venVid/sync.ps1` from the Vencord root in PowerShell before building. In that layout, the test path is `../venVid/tests/native.test.ts`. FFmpeg and FFprobe are required for these tests.
+`native.test.ts` covers encoding, cancellation, and temporary-file cleanup, and requires FFmpeg and FFprobe. `matchers.test.ts` needs neither, and guards the two lookups that depend on Discord's own bundle: the upload patch in `patches.ts` and the upload-limit finder in `limits.ts`. Both are checked against short excerpts captured from a Stable web build, with the build's filename and capture date recorded in the test. Those excerpts are evidence only for that build, so re-capture from the live bundle when a lookup is suspected of breaking rather than loosening a matcher until it matches again.
+
+For the separate-repository development layout, keep `venVid` beside `Vencord`, edit only the standalone plugin files, and run `& ../venVid/sync.ps1` from the Vencord root in PowerShell before building. In that layout, the test paths are `../venVid/tests/native.test.ts` and `../venVid/tests/matchers.test.ts`.
 
 ## License
 

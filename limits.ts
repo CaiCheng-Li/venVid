@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { filters, mapMangledModuleLazy } from "@webpack";
+import { filters, findByCodeLazy, mapMangledModuleLazy } from "@webpack";
 
 import { isValidLimit } from "./attempt";
 
@@ -12,19 +12,18 @@ const FileLimits = mapMangledModuleLazy("getGuildMaxFileSize", {
     getUserGuildLimit: filters.byCode(".getUserMaxFileSize(")
 }) as { getUserGuildLimit(guildId?: string): number; };
 
-const EffectiveLimits = mapMangledModuleLazy("2026-08-kestrel-ga", {
-    getConfig: filters.byCode(".getConfig(", "isGA:"),
-    applyConfig: filters.byCode(".enabled?Math.max(")
-}) as {
-    getConfig(options: { location: string; }): unknown;
-    applyConfig(config: unknown, base: number): number;
-};
+// The "2026-08-kestrel-ga" experiment that used to gate the raised floor has shipped, and its
+// config module is gone from the bundle. Discord now raises every limit to a fixed floor
+// unconditionally, in a one-line helper Math.max(<floor>, base) with no strings to key off.
+// Matched by shape, requiring a large numeric literal so an ordinary clamp helper cannot
+// collide and a future change to the floor value does not break the lookup.
+const applyUploadFloor = findByCodeLazy(
+    /^function \i\(\i\)\{return Math\.max\((?:0x[\da-fA-F]{6,}|\d{7,}),\i\)\}$/
+) as (base: number) => number;
 
 export function resolveLimit(guildId?: string): number | undefined {
     try {
-        const base = FileLimits.getUserGuildLimit(guildId);
-        const config = EffectiveLimits.getConfig({ location: "web.filesExceedUploadLimits" });
-        const limit = EffectiveLimits.applyConfig(config, base);
+        const limit = applyUploadFloor(FileLimits.getUserGuildLimit(guildId));
         return isValidLimit(limit) ? limit : undefined;
     } catch {
         return undefined;
