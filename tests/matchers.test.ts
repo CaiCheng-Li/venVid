@@ -41,6 +41,37 @@ const UPLOAD_FIXTURE = 'ion:"showUploadFileSizeExceededError"}))})})}async funct
 // Module 409481, the whole of it: n.d(t,{C:()=>i});function i(e){return Math.max(0x1400000,e)}
 const LIMIT_HELPER = "function i(e){return Math.max(0x1400000,e)}";
 
+// Stable web.d4c7976eccf337f1.js, captured 2026-09-28. The old module label is gone.
+const USER_GUILD_LIMIT = "function S(e){let t=o.default.getCurrentUser(),n=c.Ay.getUserMaxFileSize(t);if(null==e)return n;let i=l.A.getGuild(e);return Math.max(null!=i?g.reduce((e,t)=>{let[n,r]=t;return i.features.has(n)&&r>e?r:e},_.TbF):_.TbF,n)}";
+
+test("the user/guild limit lookup survives removal of the old module label", () => {
+    const source = read("limits.ts");
+    const moduleLookup = source.match(/mapMangledModuleLazy\((\[[^\]]+\]),/);
+    const exportLookup = source.match(/getUserGuildLimit: filters.byCode\(([^\n]+)\)/);
+    assert.ok(moduleLookup);
+    assert.ok(exportLookup);
+    const anchors = JSON.parse(moduleLookup[1]) as string[];
+    const filters = JSON.parse(`[${exportLookup[1]}]`) as string[];
+    assert.ok(!USER_GUILD_LIMIT.includes("getGuildMaxFileSize"));
+    for (const anchor of [...anchors, ...filters]) assert.ok(USER_GUILD_LIMIT.includes(anchor));
+
+    // Exercise the captured implementation for DMs, unboosted and boosted guilds.
+    let userLimit = 10485760;
+    let guild: { features: Set<string>; } | undefined;
+    const limit = new Function("o", "c", "l", "g", "_", `return (${USER_GUILD_LIMIT})`)(
+        { default: { getCurrentUser: () => ({}) } },
+        { Ay: { getUserMaxFileSize: () => userLimit } },
+        { A: { getGuild: () => guild } },
+        [["boosted", 104857600]], { TbF: 10485760 }
+    );
+    assert.equal(limit(), userLimit);
+    assert.equal(limit("guild"), userLimit);
+    guild = { features: new Set(["boosted"]) };
+    assert.equal(limit("guild"), 104857600);
+    userLimit = 524288000;
+    assert.equal(limit("guild"), userLimit);
+});
+
 test("the upload patch anchors and matches exactly once", () => {
     const patches = read("patches.ts");
     assert.ok(patches.includes("Unexpected mismatch between files and file metadata"), "find anchor changed");

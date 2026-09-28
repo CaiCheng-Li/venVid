@@ -8,8 +8,9 @@ import { filters, findByCodeLazy, mapMangledModuleLazy } from "@webpack";
 
 import { isValidLimit } from "./attempt";
 
-const FileLimits = mapMangledModuleLazy("getGuildMaxFileSize", {
-    getUserGuildLimit: filters.byCode(".getUserMaxFileSize(")
+// Discord removed the getGuildMaxFileSize label; identify the implementation instead.
+const FileLimits = mapMangledModuleLazy([".getUserMaxFileSize(", ".getGuild("], {
+    getUserGuildLimit: filters.byCode(".getUserMaxFileSize(", ".getGuild(")
 }) as { getUserGuildLimit(guildId?: string): number; };
 
 // The "2026-08-kestrel-ga" experiment that used to gate the raised floor has shipped, and its

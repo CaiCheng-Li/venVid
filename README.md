@@ -269,7 +269,7 @@ Use the commands for your operating system. The first line returns you to the co
 ```powershell
 Set-Location "$env:USERPROFILE\VenVidSetup\Vencord"
 npx.cmd --yes pnpm@11.9.0 install --frozen-lockfile
-npx.cmd --yes pnpm@11.9.0 build
+npx.cmd --yes pnpm@11.9.0 build --disable-updater
 ```
 
 **macOS or Ubuntu — Terminal:**
@@ -277,7 +277,7 @@ npx.cmd --yes pnpm@11.9.0 build
 ```bash
 cd "$HOME/VenVidSetup/Vencord"
 npx --yes pnpm@11.9.0 install --frozen-lockfile
-npx --yes pnpm@11.9.0 build
+npx --yes pnpm@11.9.0 build --disable-updater
 ```
 
 The first pnpm command downloads dependencies: the other software pieces Vencord needs. It may take a few minutes. The build command should finish with output files listed under `dist` and return to the prompt without an error.
@@ -343,6 +343,8 @@ The compressed file you see in Discord's message draft is the attachment being p
 
 ## Update VenVid later
 
+These builds disable Vencord's built-in updater to keep the custom plugin installed. Update both Vencord and VenVid with the commands below; installing a prebuilt Vencord release replaces the custom build and removes VenVid.
+
 Fully quit Discord first. Open a new terminal and run **one line at a time**, stopping if any line fails.
 
 **Windows — PowerShell:**
@@ -352,7 +354,7 @@ Set-Location "$env:USERPROFILE\VenVidSetup\Vencord"
 git -C src/userplugins/venVid pull --ff-only
 git pull --ff-only
 npx.cmd --yes pnpm@11.9.0 install --frozen-lockfile
-npx.cmd --yes pnpm@11.9.0 build
+npx.cmd --yes pnpm@11.9.0 build --disable-updater
 ```
 
 **macOS or Ubuntu — Terminal:**
@@ -362,7 +364,7 @@ cd "$HOME/VenVidSetup/Vencord"
 git -C src/userplugins/venVid pull --ff-only
 git pull --ff-only
 npx --yes pnpm@11.9.0 install --frozen-lockfile
-npx --yes pnpm@11.9.0 build
+npx --yes pnpm@11.9.0 build --disable-updater
 ```
 
 Reopen Discord after the build succeeds. A full quit and reopen is required for VenVid's background video-processing code; pressing **Ctrl + R** alone does not reload it.
