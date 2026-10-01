@@ -65,6 +65,10 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
         "-map", "0:v:0", "-map", "0:a:0?",
         "-c:v", "libx264",
         "-vf", vf,
+        // Left on auto, frame sync follows the muxer: the null muxer passes frames
+        // through while MP4 pads gaps with duplicates, so pass 2 would encode frames
+        // pass 1 never recorded and x264 aborts on the short stats file.
+        "-fps_mode", "cfr",
         "-b:v", `${videoBps}`,
         "-passlogfile", job.passlogPath
     ];

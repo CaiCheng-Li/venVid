@@ -78,6 +78,20 @@ test("trimmed output stays usable in memory after all temporary copies are delet
     assert.deepEqual(fs.readdirSync(fixtureDir), ["original.mp4"]);
 });
 
+test("a trim start between two frames gives both passes the same frames", async () => {
+    const job = await stage("test-unaligned-trim");
+    const probe = await probeJob(event, job.id);
+    await startJobEncode(event, job.id, {
+        duration: probe.duration, targetBytes: 1_000_000, audioRate: 128000,
+        trimStart: 1.01, trimEnd: 3, removeAudio: false
+    });
+    assert.equal(job.state, "ready");
+    const stats = fs.readFileSync(`${job.passlogPath}-0.log`, "utf8");
+    const counted = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", job.outputPath], { windowsHide: true });
+    assert.equal(Number(counted.stdout.toString()), stats.match(/^in:/gm)!.length);
+    await disposeJob(event, job.id);
+});
+
 test("cancel during encoding closes FFmpeg before removing its files", async () => {
     const job = await stage("test-cancel-encode");
     const probe = await probeJob(event, job.id);
