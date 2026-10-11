@@ -7,10 +7,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import * as fs from "node:fs";
+import fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { after, before, test } from "node:test";
+import { after, before, mock, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { calculateBitrate } from "../compression";
@@ -44,9 +44,9 @@ after(async () => {
     }
 });
 
-async function stage(id: string) {
+async function stage(id: string, bytes = originalBytes) {
     await prepareJob(event, id);
-    await stageInputChunk(event, id, originalBytes);
+    await stageInputChunk(event, id, bytes);
     return getJob(id)!;
 }
 
@@ -90,6 +90,103 @@ test("a trim start between two frames gives both passes the same frames", async 
     const counted = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", job.outputPath], { windowsHide: true });
     assert.equal(Number(counted.stdout.toString()), stats.match(/^in:/gm)!.length);
     await disposeJob(event, job.id);
+});
+
+test("an oversized high-resolution encode retries and preserves the full selection and audio", async () => {
+    const source = path.join(fixtureDir, "high-resolution.mp4");
+    const generated = spawnSync("ffmpeg", [
+        "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=60",
+        "-f", "lavfi", "-i", "sine=frequency=440", "-t", "4",
+        "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", source
+    ], { windowsHide: true });
+    assert.equal(generated.status, 0, generated.stderr?.toString());
+    const job = await stage("test-retry-oversized", fs.readFileSync(source));
+    try {
+        const probe = await probeJob(event, job.id);
+        await startJobEncode(event, job.id, {
+            duration: probe.duration, targetBytes: 150_000, audioRate: 128000,
+            trimStart: 0, trimEnd: 4, removeAudio: false
+        });
+        assert.equal(job.state, "ready");
+        assert.ok(job.bytesTotal! > 0 && job.bytesTotal! <= 150_000);
+        const metadata = spawnSync("ffprobe", ["-v", "error", "-show_streams", "-show_format", "-of", "json", job.outputPath], { windowsHide: true });
+        assert.equal(metadata.status, 0, metadata.stderr?.toString());
+        const output = JSON.parse(metadata.stdout.toString());
+        const video = output.streams.find(stream => stream.codec_type === "video");
+        assert.equal(video.width, 1920);
+        assert.equal(video.height, 1080);
+        assert.ok(Math.abs(Number(output.format.duration) - 4) < 0.2);
+        assert.ok(output.streams.some(stream => stream.codec_type === "audio"));
+        const decoded = spawnSync("ffmpeg", ["-v", "error", "-i", job.outputPath, "-f", "null", "-"], { windowsHide: true });
+        assert.equal(decoded.status, 0, decoded.stderr?.toString());
+    } finally {
+        await disposeJob(event, job.id);
+        fs.unlinkSync(source);
+    }
+});
+
+test("output that remains oversized stops after three attempts and cannot be attached", async () => {
+    const job = await stage("test-retry-limit");
+    const probe = await probeJob(event, job.id);
+    const statSync = fs.statSync;
+    let verifications = 0;
+    // Simulate an encoder that cannot reach the requested size even as bitrate falls.
+    const stat = mock.method(fs, "statSync", (...args: Parameters<typeof statSync>) => {
+        const result = statSync(...args);
+        if (result && args[0] === job.outputPath) {
+            verifications++;
+            result.size = 1_100_000;
+        }
+        return result;
+    });
+    try {
+        await assert.rejects(startJobEncode(event, job.id, {
+            duration: probe.duration, targetBytes: 1_000_000, audioRate: 128000,
+            trimStart: 0, trimEnd: 4, removeAudio: true
+        }), /still exceeds.*lower resolution/);
+        assert.equal(verifications, 3);
+        assert.equal(job.state, "error");
+        assert.equal(job.bytesTotal, undefined);
+        assert.equal(job.process, undefined);
+        await assert.rejects(readOutputChunk(event, job.id, 0, 1024), /Job is not ready/);
+    } finally {
+        stat.mock.restore();
+        await disposeJob(event, job.id);
+    }
+    assert.equal(fs.existsSync(job.dir), false);
+});
+
+test("cancel during an oversized-output retry stops FFmpeg and removes all temporary files", async () => {
+    const job = await stage("test-cancel-retry");
+    const probe = await probeJob(event, job.id);
+    const statSync = fs.statSync;
+    const stat = mock.method(fs, "statSync", (...args: Parameters<typeof statSync>) => {
+        const result = statSync(...args);
+        if (result && args[0] === job.outputPath) result.size = 1_100_000;
+        return result;
+    });
+    const encode = startJobEncode(event, job.id, {
+        duration: probe.duration, targetBytes: 1_000_000, audioRate: 128000,
+        trimStart: 0, trimEnd: 4, removeAudio: true
+    });
+    const settled = encode.then(() => undefined, error => error);
+    try {
+        const deadline = Date.now() + 10_000;
+        while (!job.message.includes("attempt 2/3") && Date.now() < deadline) await delay(1);
+        assert.match(job.message, /attempt 2\/3/);
+        assert.equal(job.state, "encoding");
+        assert.ok(job.process);
+        await disposeJob(event, job.id);
+        assert.ok(await settled instanceof Error);
+        assert.equal(job.state, "canceled");
+        assert.equal(job.process, undefined);
+        assert.equal(fs.existsSync(job.dir), false);
+        assert.equal(hash(fs.readFileSync(fixture)), originalHash);
+    } finally {
+        stat.mock.restore();
+        await disposeJob(event, job.id);
+        await settled;
+    }
 });
 
 test("cancel during encoding closes FFmpeg before removing its files", async () => {

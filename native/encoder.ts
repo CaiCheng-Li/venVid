@@ -37,7 +37,9 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
 
     const { duration, targetBytes, trimStart, trimEnd, removeAudio, resolution } = options;
     const selectedDuration = trimEnd - trimStart;
-    const { videoBps, audioBps, isValid } = calculateBitrate(selectedDuration, targetBytes, removeAudio);
+    const bitrate = calculateBitrate(selectedDuration, targetBytes, removeAudio);
+    const { audioBps, isValid } = bitrate;
+    let { videoBps } = bitrate;
     if (!Number.isFinite(duration) || !Number.isFinite(trimStart) || !Number.isFinite(trimEnd)
         || trimStart < 0 || trimEnd > duration + 0.1 || selectedDuration <= 0) {
         return Promise.reject(new Error("Invalid trim range"));
@@ -57,7 +59,7 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
     // Default filters
     const vf = `${filterComplex || "scale=trunc(iw/2)*2:trunc(ih/2)*2"},format=yuv420p`;
 
-    const commonArgs = [
+    const commonArgs = () => [
         "-y",
         "-ss", trimStart.toString(),
         "-t", (trimEnd - trimStart).toString(),
@@ -73,8 +75,8 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
         "-passlogfile", job.passlogPath
     ];
 
-    const pass1Args = [
-        ...commonArgs,
+    const pass1Args = () => [
+        ...commonArgs(),
         "-an",
         "-pass", "1",
         // The null muxer discards the output itself, so pass 1 never has to name a
@@ -83,8 +85,8 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
         "-f", "null", "-"
     ];
 
-    const pass2Args = [
-        ...commonArgs,
+    const pass2Args = () => [
+        ...commonArgs(),
         "-pass", "2",
         ...(removeAudio ? ["-an"] : ["-c:a", "aac", "-b:a", `${audioBps}`]),
         "-movflags", "+faststart",
@@ -92,12 +94,12 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
     ];
 
     return new Promise((resolve, reject) => {
-        const runPass = (args: string[], passNum: number): Promise<void> => {
+        const runPass = (args: string[], passNum: number, attempt: number): Promise<void> => {
             return new Promise((res, rej) => {
                 if (job.state === "canceled") {
                     return rej(new Error("Canceled"));
                 }
-                job.message = `Encoding pass ${passNum}...`;
+                job.message = attempt === 1 ? `Encoding pass ${passNum}...` : `Recompressing to fit the upload limit (attempt ${attempt}/3), pass ${passNum}...`;
                 job.progress = passNum === 1 ? 0 : 50;
 
                 const proc = spawn(getFfmpegCommand(), args, {
@@ -132,23 +134,45 @@ export function startEncode(jobId: string, options: EncodeOptions): Promise<void
             });
         };
 
-        runPass(pass1Args, 1)
-            .then(() => runPass(pass2Args, 2))
-            .then(() => {
-                if (job.state !== "canceled") {
-                    job.state = "verifying";
-                    job.message = "Verifying output...";
-                    const stat = fs.statSync(job.outputPath);
-                    if (stat.size <= 0 || stat.size > targetBytes) {
-                        throw new Error("Encoded video exceeds the upload limit. Try a shorter selection or remove audio.");
-                    }
+        const encode = async () => {
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    await runPass(pass1Args(), 1, attempt);
+                    await runPass(pass2Args(), 2, attempt);
+                } catch (err) {
+                    if (attempt === 1 || job.state === "canceled") throw err;
+                    throw new Error(`Could not recompress at a lower bitrate. Try a lower resolution, a shorter selection, or remove audio. ${(err as Error).message}`);
+                }
+                if (job.state === "canceled") throw new Error("Canceled");
+
+                job.state = "verifying";
+                job.message = "Verifying output...";
+                const stat = fs.statSync(job.outputPath);
+                if (stat.size <= 0) throw new Error("FFmpeg produced an empty video.");
+                if (stat.size <= targetBytes) {
                     job.bytesTotal = stat.size;
                     job.state = "ready";
                     job.progress = 100;
                     job.message = "Ready";
-                    resolve();
-                } else reject(new Error("Canceled"));
-            })
+                    return;
+                }
+
+                // Two-pass bitrate is a target, not a file-size cap. Account for
+                // the audio budget separately so it does not dilute the correction
+                // when audio occupies most of the file. Leave extra room on retries
+                // for AAC variation and MP4 overhead; always recheck the actual size.
+                const audioBytes = audioBps * selectedDuration / 8;
+                const videoBudget = targetBytes * 0.95 - audioBytes;
+                const measuredVideoBytes = Math.max(1, stat.size - audioBytes);
+                videoBps = Math.floor(videoBps * Math.min(0.9, videoBudget / measuredVideoBytes));
+                if (videoBps <= 0) break;
+                job.state = "encoding";
+            }
+            throw new Error("Encoded video still exceeds the upload limit after recompressing. Try a lower resolution, a shorter selection, or remove audio.");
+        };
+
+        encode()
+            .then(resolve)
             .catch(err => {
                 if (job.state !== "canceled") {
                     job.state = "error";

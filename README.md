@@ -322,7 +322,7 @@ To try it:
 4. Check **Destination** at the top. It currently shows the channel's numeric ID.
 5. Drag along the timeline to preview different moments. Drag the blue handles to choose the part to keep, or type times into **Start** and **End**. Times are in seconds.
 6. Optionally choose a lower **Resolution** or check **Remove audio**.
-7. Click **Compress** and wait. VenVid processes the selection in two passes; it is normal to see “pass 1” followed by “pass 2.”
+7. Click **Compress** and wait. VenVid processes the selection in two passes; it is normal to see “pass 1” followed by “pass 2.” If the result is too large, it automatically retries at a lower bitrate, up to two more times, keeping your selected duration, audio, and resolution.
 8. When **Final size** appears and **Attach Video** becomes available, click it. For several clips, use **Attach & Next** to prepare the next one.
 9. Review the attachment in Discord, add your message if wanted, and press **Enter** to send it.
 
@@ -435,7 +435,7 @@ On macOS, software opened from the Dock can have a different PATH from Terminal.
 
 Fully quit Discord from its tray or app menu and reopen it, then retry. A newer editor can otherwise run alongside older background code that was loaded before an update.
 
-If it still happens, follow **Update VenVid later** and restart again. If the updated error specifically says the output exceeds the limit, try a shorter selection or remove audio.
+If it still happens, follow **Update VenVid later** and restart again. The current version automatically retries oversized output at a lower bitrate. If it still cannot fit, choose a lower resolution, try a shorter selection, or remove audio.
 
 ### Cancel reports that temporary files could not be removed
 
