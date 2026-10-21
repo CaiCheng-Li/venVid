@@ -281,6 +281,25 @@ test("cleanup failures remain retryable and job IDs cannot escape temporary stor
     assert.equal(fs.existsSync(root), false);
 });
 
+test("a temporary folder deleted outside Discord is replaced for the next job", async () => {
+    const removedRoot = getPluginTempDir();
+    fs.rmdirSync(removedRoot);
+    const job = await stage("test-root-removed");
+    assert.notEqual(path.dirname(job.dir), removedRoot);
+
+    const activeRoot = path.dirname(job.dir);
+    assert.ok(path.basename(activeRoot).startsWith("venVid-"));
+    fs.rmSync(activeRoot, { recursive: true });
+    await disposeJob(event, job.id);
+    assert.equal(getJob(job.id), undefined);
+
+    const next = await stage("test-root-removed-next");
+    assert.equal(fs.existsSync(next.inputPath), true);
+    await disposeJob(event, next.id);
+    fs.rmdirSync(getPluginTempDir());
+    await cleanupAllJobs();
+});
+
 test("bitrate budgeting uses selected duration and rejects unknown duration", () => {
     assert.equal(calculateBitrate(0, 250_000, false).isValid, false);
     assert.equal(calculateBitrate(NaN, 250_000, false).isValid, false);

@@ -10,6 +10,7 @@ import * as path from "path";
 
 export interface Job {
     id: string;
+    root: string;
     dir: string;
     inputPath: string;
     outputPath: string;
@@ -26,7 +27,8 @@ const activeJobs = new Map<string, Job>();
 let pluginTempDir: string | null = null;
 
 export function getPluginTempDir() {
-    if (!pluginTempDir) {
+    // Temp cleaners can delete the folder while Discord stays open.
+    if (!pluginTempDir || !fs.existsSync(pluginTempDir)) {
         pluginTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "venVid-"));
     }
     return pluginTempDir;
@@ -37,10 +39,12 @@ export function createJob(id: string): Job {
     if (activeJobs.has(id)) {
         throw new Error("Job already exists");
     }
-    const dir = fs.mkdtempSync(path.join(getPluginTempDir(), "job-"));
+    const root = getPluginTempDir();
+    const dir = fs.mkdtempSync(path.join(root, "job-"));
 
     const job: Job = {
         id,
+        root,
         dir,
         inputPath: path.join(dir, "input"),
         outputPath: path.join(dir, "output.mp4"),
@@ -75,8 +79,8 @@ export async function deleteJob(id: string): Promise<void> {
                 }
             });
         }
-        const root = pluginTempDir && path.resolve(pluginTempDir);
-        if (!root || path.dirname(path.resolve(job.dir)).toLowerCase() !== root.toLowerCase()) {
+        const root = path.resolve(job.root);
+        if (path.dirname(root).toLowerCase() !== path.resolve(os.tmpdir()).toLowerCase() || path.dirname(path.resolve(job.dir)).toLowerCase() !== root.toLowerCase()) {
             throw new Error("Job directory is outside the temporary workspace");
         }
         await fs.promises.rm(job.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -96,7 +100,7 @@ export async function cleanupAllJobs() {
     if (failed?.status === "rejected") throw failed.reason;
     if (pluginTempDir && !activeJobs.size) {
         // Job directories are already gone; remove only the empty parent.
-        fs.rmdirSync(pluginTempDir);
+        if (fs.existsSync(pluginTempDir)) fs.rmdirSync(pluginTempDir);
         pluginTempDir = null;
     }
 }
