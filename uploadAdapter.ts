@@ -42,7 +42,7 @@ let warned = false;
 function notice(message: string) {
     if (warned) return;
     warned = true;
-    try { showToast(message); } catch (error) { logger.warn(message, error); }
+    try { showToast({ text: message }); } catch (error) { logger.warn(message, error); }
 }
 
 export function startAdapter() {
